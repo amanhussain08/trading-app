@@ -11,7 +11,9 @@ import 'package:trading_app/main.dart';
 class _MockSource extends Mock implements MarketDataSource {}
 
 void main() {
-  testWidgets('landing page opens the chart screen and back returns', (tester) async {
+  testWidgets('landing page opens the chart screen and back returns', (
+    tester,
+  ) async {
     await tester.pumpWidget(const TradingApp());
     expect(find.byType(HomeScreen), findsOneWidget);
 
@@ -29,47 +31,81 @@ void main() {
     expect(find.byType(ChartScreen), findsNothing);
   });
 
-  testWidgets('chart route draws candles from the given source', (tester) async {
+  testWidgets('chart route draws candles from the given source', (
+    tester,
+  ) async {
     final source = _MockSource();
-    when(() => source.history('BTCUSDT', '1h', limit: 1000)).thenAnswer((_) async => [
-          Candle(openTime: DateTime.utc(2026, 10, 21), open: 1, high: 2, low: 0.5, close: 1.5, volume: 10),
-        ]);
+    when(() => source.fetch('BTCUSDT', '1h', limit: 1000)).thenAnswer(
+      (_) async => [
+        Candle(
+          openTime: DateTime.utc(2026, 10, 21),
+          open: 1,
+          high: 2,
+          low: 0.5,
+          close: 1.5,
+          volume: 10,
+        ),
+      ],
+    );
 
-    await tester.pumpWidget(MaterialApp(
-      home: Builder(
-        builder: (context) => TextButton(
-          onPressed: () => Navigator.of(context).push(
-            ChartScreen.route(symbol: 'BTCUSDT', interval: '1h', source: source),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.of(context).push(
+              ChartScreen.route(
+                symbol: 'BTCUSDT',
+                interval: '1h',
+                source: source,
+              ),
+            ),
+            child: const Text('open'),
           ),
-          child: const Text('open'),
         ),
       ),
-    ));
+    );
 
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
     expect(find.byType(CandleChart), findsOneWidget);
-    verify(() => source.history('BTCUSDT', '1h', limit: 1000)).called(1);
+    verify(() => source.fetch('BTCUSDT', '1h', limit: 1000)).called(1);
     verifyNever(() => source.dispose());
   });
 
-  testWidgets('interval dropdown reloads the chart with the chosen interval', (tester) async {
+  testWidgets('interval dropdown reloads the chart with the chosen interval', (
+    tester,
+  ) async {
     final source = _MockSource();
-    when(() => source.history('BTCUSDT', any(), limit: 1000)).thenAnswer((_) async => [
-          Candle(openTime: DateTime.utc(2026, 10, 21), open: 1, high: 2, low: 0.5, close: 1.5, volume: 10),
-        ]);
+    when(() => source.fetch('BTCUSDT', any(), limit: 1000)).thenAnswer(
+      (_) async => [
+        Candle(
+          openTime: DateTime.utc(2026, 10, 21),
+          open: 1,
+          high: 2,
+          low: 0.5,
+          close: 1.5,
+          volume: 10,
+        ),
+      ],
+    );
 
-    await tester.pumpWidget(MaterialApp(
-      home: Builder(
-        builder: (context) => TextButton(
-          onPressed: () => Navigator.of(context).push(
-            ChartScreen.route(symbol: 'BTCUSDT', interval: '1h', source: source),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.of(context).push(
+              ChartScreen.route(
+                symbol: 'BTCUSDT',
+                interval: '1h',
+                source: source,
+              ),
+            ),
+            child: const Text('open'),
           ),
-          child: const Text('open'),
         ),
       ),
-    ));
+    );
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
@@ -82,7 +118,7 @@ void main() {
     await tester.tap(find.text('4H').last);
     await tester.pumpAndSettle();
 
-    verify(() => source.history('BTCUSDT', '4h', limit: 1000)).called(1);
+    verify(() => source.fetch('BTCUSDT', '4h', limit: 1000)).called(1);
     expect(find.text('4H'), findsOneWidget);
     expect(find.byType(CandleChart), findsOneWidget);
   });

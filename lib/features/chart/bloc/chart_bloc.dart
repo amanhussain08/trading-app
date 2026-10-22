@@ -36,7 +36,7 @@ class ChartBloc extends Bloc<ChartEvent, ChartState> {
       ),
     );
     try {
-      final candles = await _source.history(
+      final candles = await _source.fetch(
         event.symbol,
         event.interval,
         limit: historyLimit,

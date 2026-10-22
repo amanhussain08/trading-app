@@ -15,8 +15,19 @@ const double _pad = (401 - _low) * 0.05;
 
 void main() {
   test('Candle.fromKline parses Binance string prices', () {
-    final candle = Candle.fromKline([1792591260000, '83740.01', '83786.01', '83720.00', '83720.00', '10.396', 1792591319999]);
-    expect(candle.openTime, DateTime.fromMillisecondsSinceEpoch(1792591260000, isUtc: true));
+    final candle = Candle.fromKline([
+      1792591260000,
+      '83740.01',
+      '83786.01',
+      '83720.00',
+      '83720.00',
+      '10.396',
+      1792591319999,
+    ]);
+    expect(
+      candle.openTime,
+      DateTime.fromMillisecondsSinceEpoch(1792591260000, isUtc: true),
+    );
     expect(candle.high, 83786.01);
     expect(candle.isUp, isFalse);
   });
@@ -24,7 +35,14 @@ void main() {
   group('ChartBloc', () {
     late _MockSource source;
     final candles = [
-      Candle(openTime: DateTime.utc(2026, 10, 21), open: 1, high: 2, low: 0.5, close: 1.5, volume: 10),
+      Candle(
+        openTime: DateTime.utc(2026, 10, 21),
+        open: 1,
+        high: 2,
+        low: 0.5,
+        close: 1.5,
+        volume: 10,
+      ),
     ];
 
     setUp(() => source = _MockSource());
@@ -32,16 +50,26 @@ void main() {
     blocTest<ChartBloc, ChartState>(
       'emits loading then ready with candles',
       build: () {
-        when(() => source.history('BTCUSDT', '1h', limit: 1000)).thenAnswer((_) async => candles);
+        when(
+          () => source.fetch('BTCUSDT', '1h', limit: 1000),
+        ).thenAnswer((_) async => candles);
         return ChartBloc(source);
       },
-      act: (bloc) => bloc.add(const ChartStarted(symbol: 'BTCUSDT', interval: '1h')),
+      act: (bloc) =>
+          bloc.add(const ChartStarted(symbol: 'BTCUSDT', interval: '1h')),
       expect: () => [
-        const ChartState(status: ChartStatus.loading, symbol: 'BTCUSDT', interval: '1h'),
+        const ChartState(
+          status: ChartStatus.loading,
+          symbol: 'BTCUSDT',
+          interval: '1h',
+        ),
         isA<ChartState>()
             .having((s) => s.status, 'status', ChartStatus.ready)
             .having((s) => s.candles, 'candles', candles)
-            .having((s) => (s.visibleFrom, s.visibleTo), 'visible range', (0, 0))
+            .having((s) => (s.visibleFrom, s.visibleTo), 'visible range', (
+              0,
+              0,
+            ))
             .having((s) => s.priceLow, 'priceLow', closeTo(0.425, 1e-9))
             .having((s) => s.priceHigh, 'priceHigh', closeTo(2.075, 1e-9)),
       ],
@@ -51,8 +79,12 @@ void main() {
       'switching interval cancels a load that is still in flight',
       build: () {
         final slow = Completer<List<Candle>>();
-        when(() => source.history('BTCUSDT', '1m', limit: 1000)).thenAnswer((_) => slow.future);
-        when(() => source.history('BTCUSDT', '4h', limit: 1000)).thenAnswer((_) async {
+        when(
+          () => source.fetch('BTCUSDT', '1m', limit: 1000),
+        ).thenAnswer((_) => slow.future);
+        when(() => source.fetch('BTCUSDT', '4h', limit: 1000)).thenAnswer((
+          _,
+        ) async {
           slow.complete(candles);
           return candles;
         });
@@ -65,8 +97,16 @@ void main() {
       },
       wait: const Duration(milliseconds: 10),
       expect: () => [
-        const ChartState(status: ChartStatus.loading, symbol: 'BTCUSDT', interval: '1m'),
-        const ChartState(status: ChartStatus.loading, symbol: 'BTCUSDT', interval: '4h'),
+        const ChartState(
+          status: ChartStatus.loading,
+          symbol: 'BTCUSDT',
+          interval: '1m',
+        ),
+        const ChartState(
+          status: ChartStatus.loading,
+          symbol: 'BTCUSDT',
+          interval: '4h',
+        ),
         isA<ChartState>()
             .having((s) => s.status, 'status', ChartStatus.ready)
             .having((s) => s.interval, 'interval', '4h'),
@@ -90,16 +130,26 @@ void main() {
       blocTest<ChartBloc, ChartState>(
         'starts on the newest visibleCount candles',
         build: () {
-          when(() => source.history('BTCUSDT', '1h', limit: 1000)).thenAnswer((_) async => many);
+          when(
+            () => source.fetch('BTCUSDT', '1h', limit: 1000),
+          ).thenAnswer((_) async => many);
           return ChartBloc(source);
         },
-        act: (bloc) => bloc.add(const ChartStarted(symbol: 'BTCUSDT', interval: '1h')),
+        act: (bloc) =>
+            bloc.add(const ChartStarted(symbol: 'BTCUSDT', interval: '1h')),
         skip: 1,
         expect: () => [
           isA<ChartState>()
-              .having((s) => (s.visibleFrom, s.visibleTo), 'visible range', (300 - ChartBloc.initialVisibleCount, 299))
+              .having((s) => (s.visibleFrom, s.visibleTo), 'visible range', (
+                300 - ChartBloc.initialVisibleCount,
+                299,
+              ))
               .having((s) => s.priceLow, 'priceLow', closeTo(_low - _pad, 1e-9))
-              .having((s) => s.priceHigh, 'priceHigh', closeTo(401 + _pad, 1e-9)),
+              .having(
+                (s) => s.priceHigh,
+                'priceHigh',
+                closeTo(401 + _pad, 1e-9),
+              ),
         ],
       );
 
@@ -107,12 +157,20 @@ void main() {
         'rescales prices to the candles scrolled into view',
         build: () => ChartBloc(source),
         seed: () => ChartState(status: ChartStatus.ready, candles: many),
-        act: (bloc) => bloc.add(const ChartVisibleRangeChanged(from: 0, to: 99)),
+        act: (bloc) =>
+            bloc.add(const ChartVisibleRangeChanged(from: 0, to: 99)),
         expect: () => [
           isA<ChartState>()
-              .having((s) => (s.visibleFrom, s.visibleTo), 'visible range', (0, 99))
+              .having((s) => (s.visibleFrom, s.visibleTo), 'visible range', (
+                0,
+                99,
+              ))
               .having((s) => s.priceLow, 'priceLow', closeTo(99 - 5.1, 1e-9))
-              .having((s) => s.priceHigh, 'priceHigh', closeTo(201 + 5.1, 1e-9)),
+              .having(
+                (s) => s.priceHigh,
+                'priceHigh',
+                closeTo(201 + 5.1, 1e-9),
+              ),
         ],
       );
 
@@ -144,13 +202,13 @@ void main() {
 
       group('manual price range', () {
         ChartState ready() => ChartState(
-              status: ChartStatus.ready,
-              candles: many,
-              visibleFrom: 0,
-              visibleTo: 99,
-              priceLow: 100,
-              priceHigh: 200,
-            );
+          status: ChartStatus.ready,
+          candles: many,
+          visibleFrom: 0,
+          visibleTo: 99,
+          priceLow: 100,
+          priceHigh: 200,
+        );
 
         blocTest<ChartBloc, ChartState>(
           'vertical pan shifts the range and turns auto-scale off',
@@ -180,13 +238,21 @@ void main() {
           'scrolling after a manual pan or scale returns to auto-scale',
           build: () => ChartBloc(source),
           seed: () => ready().copyWith(autoScale: false),
-          act: (bloc) => bloc.add(const ChartVisibleRangeChanged(from: 200, to: 299)),
+          act: (bloc) =>
+              bloc.add(const ChartVisibleRangeChanged(from: 200, to: 299)),
           expect: () => [
             isA<ChartState>()
-                .having((s) => (s.visibleFrom, s.visibleTo), 'visible range', (200, 299))
+                .having((s) => (s.visibleFrom, s.visibleTo), 'visible range', (
+                  200,
+                  299,
+                ))
                 .having((s) => s.autoScale, 'autoScale', true)
                 .having((s) => s.priceLow, 'priceLow', closeTo(299 - 5.1, 1e-9))
-                .having((s) => s.priceHigh, 'priceHigh', closeTo(401 + 5.1, 1e-9))
+                .having(
+                  (s) => s.priceHigh,
+                  'priceHigh',
+                  closeTo(401 + 5.1, 1e-9),
+                )
                 .having((s) => s.volumeMax, 'volumeMax', 1),
           ],
         );
@@ -200,7 +266,11 @@ void main() {
             isA<ChartState>()
                 .having((s) => s.autoScale, 'autoScale', true)
                 .having((s) => s.priceLow, 'priceLow', closeTo(99 - 5.1, 1e-9))
-                .having((s) => s.priceHigh, 'priceHigh', closeTo(201 + 5.1, 1e-9)),
+                .having(
+                  (s) => s.priceHigh,
+                  'priceHigh',
+                  closeTo(201 + 5.1, 1e-9),
+                ),
           ],
         );
       });
@@ -209,9 +279,14 @@ void main() {
         'clamps out-of-bounds ranges from overscroll',
         build: () => ChartBloc(source),
         seed: () => ChartState(status: ChartStatus.ready, candles: many),
-        act: (bloc) => bloc.add(const ChartVisibleRangeChanged(from: -20, to: 5000)),
+        act: (bloc) =>
+            bloc.add(const ChartVisibleRangeChanged(from: -20, to: 5000)),
         expect: () => [
-          isA<ChartState>().having((s) => (s.visibleFrom, s.visibleTo), 'visible range', (0, 299)),
+          isA<ChartState>().having(
+            (s) => (s.visibleFrom, s.visibleTo),
+            'visible range',
+            (0, 299),
+          ),
         ],
       );
     });
@@ -219,13 +294,25 @@ void main() {
     blocTest<ChartBloc, ChartState>(
       'emits failure when the request throws',
       build: () {
-        when(() => source.history('BTCUSDT', '1h', limit: 1000)).thenThrow(const MarketDataException('offline'));
+        when(
+          () => source.fetch('BTCUSDT', '1h', limit: 1000),
+        ).thenThrow(const MarketDataException('offline'));
         return ChartBloc(source);
       },
-      act: (bloc) => bloc.add(const ChartStarted(symbol: 'BTCUSDT', interval: '1h')),
+      act: (bloc) =>
+          bloc.add(const ChartStarted(symbol: 'BTCUSDT', interval: '1h')),
       expect: () => [
-        const ChartState(status: ChartStatus.loading, symbol: 'BTCUSDT', interval: '1h'),
-        const ChartState(status: ChartStatus.failure, symbol: 'BTCUSDT', interval: '1h', error: 'offline'),
+        const ChartState(
+          status: ChartStatus.loading,
+          symbol: 'BTCUSDT',
+          interval: '1h',
+        ),
+        const ChartState(
+          status: ChartStatus.failure,
+          symbol: 'BTCUSDT',
+          interval: '1h',
+          error: 'offline',
+        ),
       ],
     );
   });

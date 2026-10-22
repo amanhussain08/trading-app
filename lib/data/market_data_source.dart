@@ -2,7 +2,7 @@ import 'models/candle.dart';
 
 abstract interface class MarketDataSource {
   /// Most recent [limit] candles, oldest first.
-  Future<List<Candle>> history(
+  Future<List<Candle>> fetch(
     String symbol,
     String interval, {
     int limit = 1000,

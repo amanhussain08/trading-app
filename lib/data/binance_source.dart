@@ -18,7 +18,7 @@ class BinanceSource implements MarketDataSource {
   final Dio _dio;
 
   @override
-  Future<List<Candle>> history(
+  Future<List<Candle>> fetch(
     String symbol,
     String interval, {
     int limit = 1000,
