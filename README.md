@@ -75,9 +75,6 @@ lib/
     drawing/                    drawing model, hit testing and DrawingController
     view/chart_screen.dart      chart screen, with the interval picker
     widgets/                    CandleChart, painters, axes, crosshair, drawings
-test/                           unit and widget tests
-benchmark/                      performance benchmark
-docs/                           performance write-ups
 ```
 
 ## Troubleshooting
