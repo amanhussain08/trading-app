@@ -9,8 +9,6 @@ For more about the app:
 
 Go to folder path /documents
 
-
-
 ## Requirements
 
 - **Flutter 3.38 or newer** (Dart 3.10.4 or newer; see `environment.sdk` in
@@ -84,7 +82,3 @@ can't reach Binance. Check its connection. Some networks and regions block
 Binance, in which case try another network or a VPN.
 - **Version solving failed in** `flutter pub get`**:** your Flutter is too old.
 Run `flutter upgrade`, or install 3.38 or newer.
-- **iOS build fails on pods:** run `cd ios && pod install && cd ..`, then
-`flutter run` again.
-- **The chart doesn't move when you drag:** you're using a mouse or trackpad.
-Use a phone, an emulator or the iOS Simulator; see above.
