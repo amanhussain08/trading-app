@@ -21,6 +21,17 @@ class Candle extends Equatable {
         volume: double.parse(row[5] as String),
       );
 
+  /// Parses the `k` object of a Binance `<symbol>@kline_<interval>` stream
+  /// message: `{"t": openTime, "o": "open", "h": "high", "l": "low", ...}`.
+  factory Candle.fromStreamKline(Map<String, dynamic> k) => Candle(
+        openTime: DateTime.fromMillisecondsSinceEpoch(k['t'] as int, isUtc: true),
+        open: double.parse(k['o'] as String),
+        high: double.parse(k['h'] as String),
+        low: double.parse(k['l'] as String),
+        close: double.parse(k['c'] as String),
+        volume: double.parse(k['v'] as String),
+      );
+
   final DateTime openTime;
   final double open;
   final double high;

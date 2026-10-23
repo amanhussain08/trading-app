@@ -26,8 +26,8 @@ class HomeScreen extends StatelessWidget {
                 Text('Trading App', style: textTheme.headlineMedium),
                 const SizedBox(height: 8),
                 Text(
-                  'Candlestick charts from Binance market data',
-                  style: textTheme.bodyMedium?.copyWith(color: Colors.white70),
+                  'Candlestick charts from Binance Public API',
+                  style: textTheme.bodyMedium?.copyWith(color: Colors.black54),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),

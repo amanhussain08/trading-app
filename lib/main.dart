@@ -15,8 +15,8 @@ class TradingApp extends StatelessWidget {
       title: 'Trading App',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF131722),
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: Colors.white,
       ),
       home: const HomeScreen(),
     );

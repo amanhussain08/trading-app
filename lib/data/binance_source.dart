@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'market_data_source.dart';
 import 'models/candle.dart';
@@ -38,6 +41,25 @@ class BinanceSource implements MarketDataSource {
           .toList(growable: false);
     } on DioException catch (e) {
       throw MarketDataException(_describe(e));
+    }
+  }
+
+  @override
+  Stream<Candle> live(String symbol, String interval) async* {
+    final channel = WebSocketChannel.connect(
+      Uri.parse(
+        'wss://data-stream.binance.vision/ws/'
+        '${symbol.toLowerCase()}@kline_$interval',
+      ),
+    );
+    try {
+      await for (final message in channel.stream) {
+        final json = jsonDecode(message as String) as Map<String, dynamic>;
+        if (json['e'] != 'kline') continue;
+        yield Candle.fromStreamKline(json['k'] as Map<String, dynamic>);
+      }
+    } finally {
+      await channel.sink.close();
     }
   }
 

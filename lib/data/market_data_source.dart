@@ -8,6 +8,11 @@ abstract interface class MarketDataSource {
     int limit = 1000,
   });
 
+  /// Updates to the newest candle as they happen: the forming candle again
+  /// whenever it changes, then the next one once its interval starts.
+  /// Cancelling the subscription closes the connection.
+  Stream<Candle> live(String symbol, String interval);
+
   void dispose();
 }
 

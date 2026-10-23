@@ -1,33 +1,29 @@
-import 'dart:math' as math;
-
 import 'package:bloc_concurrency/bloc_concurrency.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../data/market_data_source.dart';
 import '../../../data/models/candle.dart';
+import '../chart_log.dart';
 
 part 'chart_event.dart';
 part 'chart_state.dart';
 
+/// Loads a symbol's candles and keeps them live. Data only: what is on
+/// screen (scroll, zoom, price range) lives in the chart's TimeScale and
+/// PriceScale, as Lightweight Charts keeps its model apart from the view.
 class ChartBloc extends Bloc<ChartEvent, ChartState> {
   ChartBloc(this._source) : super(const ChartState()) {
     on<ChartStarted>(_onStarted, transformer: restartable());
-    on<ChartVisibleRangeChanged>(_onVisibleRangeChanged);
-    on<ChartPricePanned>(_onPricePanned);
-    on<ChartPriceScaled>(_onPriceScaled);
-    on<ChartAutoScaleReset>(_onAutoScaleReset);
   }
 
   /// Binance's maximum candles per klines request.
   static const historyLimit = 1000;
 
-  /// How many candles fit across the chart's width before any zooming.
-  static const initialVisibleCount = 50;
-
   final MarketDataSource _source;
 
   Future<void> _onStarted(ChartStarted event, Emitter<ChartState> emit) async {
+    ChartLog.info('bloc', 'loading ${event.symbol} ${event.interval}');
     emit(
       ChartState(
         status: ChartStatus.loading,
@@ -35,94 +31,58 @@ class ChartBloc extends Bloc<ChartEvent, ChartState> {
         interval: event.interval,
       ),
     );
+    final List<Candle> candles;
     try {
-      final candles = await _source.fetch(
+      candles = await _source.fetch(
         event.symbol,
         event.interval,
         limit: historyLimit,
       );
-      final loaded = state.copyWith(
-        status: ChartStatus.ready,
-        candles: candles,
-      );
-      emit(
-        _withVisibleRange(
-          loaded,
-          candles.length - initialVisibleCount,
-          candles.length - 1,
-        ),
-      );
     } catch (error) {
+      ChartLog.info('bloc', 'load failed: $error');
       emit(state.copyWith(status: ChartStatus.failure, error: '$error'));
+      return;
     }
+    ChartLog.info('bloc', 'loaded ${candles.length} candles, going live');
+    emit(
+      state.copyWith(
+        status: ChartStatus.ready,
+        candles: List.unmodifiable(candles),
+      ),
+    );
+
+    // Runs until the next ChartStarted (restartable) or close cancels it. A
+    // dropped connection leaves the chart showing what it has.
+    await emit.forEach<Candle>(
+      _source.live(event.symbol, event.interval),
+      onData: (candle) => _withLiveCandle(state, candle),
+      onError: (error, _) {
+        ChartLog.info('bloc', 'live stream error, keeping what we have: $error');
+        return state;
+      },
+    );
   }
 
-  void _onVisibleRangeChanged(
-    ChartVisibleRangeChanged event,
-    Emitter<ChartState> emit,
-  ) {
-    if (state.candles.isEmpty) return;
-    emit(_withVisibleRange(state, event.from, event.to));
-  }
-
-  static ChartState _withVisibleRange(ChartState state, int from, int to) {
+  /// Merges a live update: replaces the forming candle, or appends the next
+  /// one. Older candles than the newest are ignored.
+  static ChartState _withLiveCandle(ChartState state, Candle candle) {
     final candles = state.candles;
-    if (candles.isEmpty) return state;
-
-    final last = candles.length - 1;
-    final start = from.clamp(0, last);
-    final end = to.clamp(start, last);
-
-    var low = candles[start].low;
-    var high = candles[start].high;
-    var volumeMax = 0.0;
-    for (var i = start; i <= end; i++) {
-      low = math.min(low, candles[i].low);
-      high = math.max(high, candles[i].high);
-      volumeMax = math.max(volumeMax, candles[i].volume);
+    if (candles.isNotEmpty && candle.openTime.isBefore(candles.last.openTime)) {
+      ChartLog.info('bloc', 'ignored stale candle at ${candle.openTime}');
+      return state;
     }
-    final padding = high > low
-        ? (high - low) * 0.05
-        : math.max(high.abs() * 0.01, 1.0);
-
+    final appended =
+        candles.isEmpty || candle.openTime.isAfter(candles.last.openTime);
+    if (appended) {
+      ChartLog.info('bloc', 'new candle at ${candle.openTime} close=${candle.close}');
+    } else {
+      ChartLog.frame('bloc', 'tick close=${candle.close}');
+    }
     return state.copyWith(
-      visibleFrom: start,
-      visibleTo: end,
-      priceLow: low - padding,
-      priceHigh: high + padding,
-      volumeMax: volumeMax,
-      autoScale: true,
+      candles: List.unmodifiable([
+        ...appended ? candles : candles.take(candles.length - 1),
+        candle,
+      ]),
     );
-  }
-
-  void _onPricePanned(ChartPricePanned event, Emitter<ChartState> emit) {
-    final range = state.priceHigh - state.priceLow;
-    if (range <= 0) return;
-    final shift = event.fraction * range;
-    emit(
-      state.copyWith(
-        priceLow: state.priceLow + shift,
-        priceHigh: state.priceHigh + shift,
-        autoScale: false,
-      ),
-    );
-  }
-
-  void _onPriceScaled(ChartPriceScaled event, Emitter<ChartState> emit) {
-    final range = state.priceHigh - state.priceLow;
-    if (range <= 0 || event.factor <= 0) return;
-    final middle = (state.priceLow + state.priceHigh) / 2;
-    final half = range * event.factor / 2;
-    emit(
-      state.copyWith(
-        priceLow: middle - half,
-        priceHigh: middle + half,
-        autoScale: false,
-      ),
-    );
-  }
-
-  void _onAutoScaleReset(ChartAutoScaleReset event, Emitter<ChartState> emit) {
-    emit(_withVisibleRange(state, state.visibleFrom, state.visibleTo));
   }
 }

@@ -1,13 +1,15 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../data/models/candle.dart';
-import '../bloc/chart_bloc.dart';
+import '../chart_log.dart';
+import '../scale/price_scale.dart';
+import '../scale/time_scale.dart';
+import 'candle_chart.dart';
 
-const _axisLineColor = Color(0x3DFFFFFF);
-const _labelStyle = TextStyle(color: Colors.white60, fontSize: 11);
+const _axisLineColor = Color(0x3D000000);
+const _labelStyle = TextStyle(color: Colors.black54, fontSize: 11);
 const _tickLength = 4.0;
 
 // ---------------------------------------------------------------------------
@@ -46,60 +48,120 @@ PriceTicks priceTicks(double low, double high, {required int maxTicks}) {
   );
 }
 
-/// Labels the visible price range of [ChartBloc]; sits to the right of the candles.
+/// Labels [priceScale]'s range; sits to the right of the candles.
 ///
 /// Dragging it down compresses the candles, dragging up stretches them;
 /// double-tap returns to auto-scale.
 class PriceAxis extends StatelessWidget {
-  const PriceAxis({super.key});
+  const PriceAxis({
+    super.key,
+    required this.candles,
+    required this.timeScale,
+    required this.priceScale,
+  });
+
+  final List<Candle> candles;
+  final TimeScale timeScale;
+  final PriceScale priceScale;
 
   @override
   Widget build(BuildContext context) {
-    final (low, high) = context.select(
-      (ChartBloc bloc) => (bloc.state.priceLow, bloc.state.priceHigh),
-    );
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
+      supportedDevices: CandleChart.touchDevices,
+      onVerticalDragStart: (_) => ChartLog.info('input', 'price axis drag: scaling prices'),
       onVerticalDragUpdate: (details) =>
-          context.read<ChartBloc>().add(ChartPriceScaled(math.exp(details.delta.dy / 200))),
-      onDoubleTap: () => context.read<ChartBloc>().add(const ChartAutoScaleReset()),
-      child: CustomPaint(size: Size.infinite, painter: _PriceAxisPainter(low, high)),
+          priceScale.scaleBy(math.exp(details.delta.dy / 200)),
+      onDoubleTap: () {
+        ChartLog.info('input', 'price axis double-tap: autoscale');
+        priceScale.resetAutoScale();
+      },
+      child: RepaintBoundary(
+        child: CustomPaint(
+          size: Size.infinite,
+          painter: _PriceAxisPainter(candles, timeScale, priceScale),
+        ),
+      ),
     );
   }
 }
 
-class _PriceAxisPainter extends CustomPainter {
-  _PriceAxisPainter(this.priceLow, this.priceHigh);
+/// Top of a [labelHeight]-tall label centred on [y], kept inside [height] so
+/// a price above or below the visible range stays pinned to that edge.
+double pinnedLabelTop({required double y, required double labelHeight, required double height}) =>
+    (y - labelHeight / 2).clamp(0.0, math.max(0.0, height - labelHeight));
 
-  final double priceLow;
-  final double priceHigh;
+class _PriceAxisPainter extends CustomPainter {
+  _PriceAxisPainter(this.candles, this.timeScale, this.priceScale)
+      : super(repaint: Listenable.merge([timeScale, priceScale]));
+
+  final List<Candle> candles;
+  final TimeScale timeScale;
+  final PriceScale priceScale;
+
+  static const _upColor = Color(0xFF26A69A);
+  static const _downColor = Color(0xFFEF5350);
 
   @override
   void paint(Canvas canvas, Size size) {
     final line = Paint()..color = _axisLineColor;
     canvas.drawLine(const Offset(0.5, 0), Offset(0.5, size.height), line);
-    if (priceHigh <= priceLow) return;
+    final range = priceScale.range(candles, timeScale);
+    if (range.isEmpty) return;
 
-    final ticks = priceTicks(priceLow, priceHigh, maxTicks: (size.height / 40).floor());
+    double y(double price) => range.priceToY(price, size.height);
+    final ticks = priceTicks(range.low, range.high, maxTicks: (size.height / 40).floor());
+
+    // The newest candle's close is tagged on the axis as the live price.
+    final last = candles.isEmpty ? null : candles.last;
+    TextPainter? tag;
+    var tagTop = 0.0;
+    if (last != null) {
+      tag = TextPainter(
+        text: TextSpan(
+          text: last.close.toStringAsFixed(math.max(ticks.decimals, 2)),
+          style: _labelStyle.copyWith(color: Colors.white),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tagTop = pinnedLabelTop(y: y(last.close), labelHeight: tag.height + 4, height: size.height);
+    }
+
     for (final price in ticks.values) {
-      final y = (priceHigh - price) / (priceHigh - priceLow) * size.height;
+      final tickY = y(price);
       final label = TextPainter(
         text: TextSpan(text: price.toStringAsFixed(ticks.decimals), style: _labelStyle),
         textDirection: TextDirection.ltr,
       )..layout();
 
-      final top = y - label.height / 2;
-      if (top >= 0 && top + label.height <= size.height) {
-        canvas.drawLine(Offset(0, y), Offset(_tickLength, y), line);
+      final top = tickY - label.height / 2;
+      final underTag =
+          tag != null && top < tagTop + tag.height + 4 && top + label.height > tagTop;
+      if (top >= 0 && top + label.height <= size.height && !underTag) {
+        canvas.drawLine(Offset(0, tickY), Offset(_tickLength, tickY), line);
         label.paint(canvas, Offset(_tickLength + 4, top));
       }
       label.dispose();
+    }
+
+    if (last != null && tag != null) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(1, tagTop, size.width - 1, tag.height + 4),
+          const Radius.circular(2),
+        ),
+        Paint()..color = last.isUp ? _upColor : _downColor,
+      );
+      tag.paint(canvas, Offset(_tickLength + 4, tagTop + 2));
+      tag.dispose();
     }
   }
 
   @override
   bool shouldRepaint(_PriceAxisPainter old) =>
-      old.priceLow != priceLow || old.priceHigh != priceHigh;
+      !identical(old.candles, candles) ||
+      old.timeScale != timeScale ||
+      old.priceScale != priceScale;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,21 +190,37 @@ String formatVolume(double volume) {
   return withSuffix(volume, '');
 }
 
-/// Labels the volume pane of [ChartBloc]; sits under [PriceAxis].
+/// Labels the volume pane; sits under [PriceAxis].
 class VolumeAxis extends StatelessWidget {
-  const VolumeAxis({super.key});
+  const VolumeAxis({
+    super.key,
+    required this.candles,
+    required this.timeScale,
+    required this.priceScale,
+  });
+
+  final List<Candle> candles;
+  final TimeScale timeScale;
+  final PriceScale priceScale;
 
   @override
   Widget build(BuildContext context) {
-    final volumeMax = context.select((ChartBloc bloc) => bloc.state.volumeMax);
-    return CustomPaint(size: Size.infinite, painter: _VolumeAxisPainter(volumeMax));
+    return RepaintBoundary(
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: _VolumeAxisPainter(candles, timeScale, priceScale),
+      ),
+    );
   }
 }
 
 class _VolumeAxisPainter extends CustomPainter {
-  _VolumeAxisPainter(this.volumeMax);
+  _VolumeAxisPainter(this.candles, this.timeScale, this.priceScale)
+      : super(repaint: timeScale);
 
-  final double volumeMax;
+  final List<Candle> candles;
+  final TimeScale timeScale;
+  final PriceScale priceScale;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -150,6 +228,7 @@ class _VolumeAxisPainter extends CustomPainter {
     canvas
       ..drawLine(const Offset(0.5, 0), Offset(0.5, size.height), line)
       ..drawLine(const Offset(0, 0.5), Offset(size.width, 0.5), line);
+    final volumeMax = priceScale.volumeMax(candles, timeScale);
     if (volumeMax <= 0) return;
 
     final top = volumeMax * volumeHeadroom;
@@ -172,7 +251,10 @@ class _VolumeAxisPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_VolumeAxisPainter old) => old.volumeMax != volumeMax;
+  bool shouldRepaint(_VolumeAxisPainter old) =>
+      !identical(old.candles, candles) ||
+      old.timeScale != timeScale ||
+      old.priceScale != priceScale;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,11 +287,28 @@ int _localEpochMinutes(DateTime time) =>
     (time.millisecondsSinceEpoch + time.toLocal().timeZoneOffset.inMilliseconds) ~/ 60000;
 
 /// Whether candle [index] is the first one in a new [stepMinutes] bucket of
-/// local time, i.e. where a time-axis label belongs.
+/// local time, i.e. where a time-axis label belongs. [index] may be past the
+/// newest candle; see [candleTimeAt].
 bool isTimeTick(List<Candle> candles, int index, int stepMinutes) {
-  if (index <= 0 || index >= candles.length) return false;
-  return _localEpochMinutes(candles[index].openTime) ~/ stepMinutes !=
-      _localEpochMinutes(candles[index - 1].openTime) ~/ stepMinutes;
+  if (index <= 0 || candles.length < 2) return false;
+  return _localEpochMinutes(candleTimeAt(candles, index)) ~/ stepMinutes !=
+      _localEpochMinutes(candleTimeAt(candles, index - 1)) ~/ stepMinutes;
+}
+
+/// Open time of candle [index] in [candles] (oldest first, at least two).
+/// Past the newest candle, where the chart shows empty space, times continue
+/// at the latest interval: by calendar month for monthly candles, since
+/// months differ in length.
+DateTime candleTimeAt(List<Candle> candles, int index) {
+  final n = candles.length;
+  if (index < n) return candles[index].openTime;
+  final last = candles[n - 1].openTime;
+  final ahead = index - (n - 1);
+  final interval = last.difference(candles[n - 2].openTime);
+  if (interval >= const Duration(days: 28)) {
+    return DateTime.utc(last.year, last.month + ahead, last.day, last.hour, last.minute);
+  }
+  return last.add(interval * ahead);
 }
 
 const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -223,50 +322,53 @@ String timeLabel(DateTime previous, DateTime current) {
   return '${c.hour.toString().padLeft(2, '0')}:${c.minute.toString().padLeft(2, '0')}';
 }
 
-/// Labels candle times under a reversed horizontal candle [ListView]; repaints
-/// on every scroll tick of [scrollController] so labels move with the candles.
+/// Full local time of a candle for the crosshair: `22 Oct 2026 14:30`, or
+/// just the date for daily and longer candles.
+String crosshairTimeLabel(DateTime time, Duration interval) {
+  final t = time.toLocal();
+  final date = '${t.day} ${_months[t.month - 1]} ${t.year}';
+  if (interval >= const Duration(days: 1)) return date;
+  return '$date ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+}
+
+/// Labels candle times under the candle pane at [timeScale]'s positions,
+/// including the empty slots past the newest candle; repaints whenever the
+/// time scale pans or zooms.
 class TimeAxisPainter extends CustomPainter {
-  TimeAxisPainter({
-    required this.candles,
-    required this.visibleCount,
-    required this.scrollController,
-  }) : super(repaint: scrollController);
+  TimeAxisPainter({required this.candles, required this.timeScale})
+      : super(repaint: timeScale);
 
   final List<Candle> candles;
-  final double visibleCount;
-  final ScrollController scrollController;
+  final TimeScale timeScale;
 
   @override
   void paint(Canvas canvas, Size size) {
     final line = Paint()..color = _axisLineColor;
     canvas.drawLine(const Offset(0, 0.5), Offset(size.width, 0.5), line);
-    if (candles.length < 2 || size.isEmpty) return;
+    final slots = timeScale.visibleSlots;
+    if (candles.length < 2 || size.isEmpty || slots == null) return;
 
-    final candleWidth = size.width / visibleCount;
-    final pixels = scrollController.hasClients ? scrollController.offset : 0.0;
+    final candleWidth = timeScale.barSpacing;
     final step = timeStepMinutes(
       interval: candles[1].openTime.difference(candles[0].openTime),
       candleWidth: candleWidth,
     );
 
-    // Same mapping as the candle list: list item k is candle (n - 1 - k), and
-    // item 0 sits at the right edge. A few extra items keep edge labels whole.
-    final n = candles.length;
+    // A few extra slots each side keep edge labels whole.
     final margin = (60 / candleWidth).ceil();
-    final firstItem = math.max(0, (pixels / candleWidth).floor() - margin);
-    final lastItem = math.min(n - 1, ((pixels + size.width) / candleWidth).ceil() + margin);
+    final from = math.max(1, slots.$1 - margin);
+    final to = slots.$2 + margin;
 
     canvas
       ..save()
       ..clipRect(Offset.zero & size);
-    for (var k = firstItem; k <= lastItem; k++) {
-      final i = n - 1 - k;
+    for (var i = from; i <= to; i++) {
       if (!isTimeTick(candles, i, step)) continue;
 
-      final x = size.width - (k + 0.5) * candleWidth + pixels;
+      final x = timeScale.indexToX(i);
       final label = TextPainter(
         text: TextSpan(
-          text: timeLabel(candles[i - 1].openTime, candles[i].openTime),
+          text: timeLabel(candleTimeAt(candles, i - 1), candleTimeAt(candles, i)),
           style: _labelStyle,
         ),
         textDirection: TextDirection.ltr,
@@ -281,7 +383,5 @@ class TimeAxisPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(TimeAxisPainter old) =>
-      !identical(old.candles, candles) ||
-      old.visibleCount != visibleCount ||
-      old.scrollController != scrollController;
+      !identical(old.candles, candles) || old.timeScale != timeScale;
 }
