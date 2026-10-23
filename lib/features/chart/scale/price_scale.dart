@@ -13,15 +13,20 @@ class PriceRange {
 
   static const empty = PriceRange(0, 0);
 
+  /// Price at the bottom edge of the pane.
   final double low;
+
+  /// Price at the top edge of the pane.
   final double high;
 
+  /// No usable range yet, e.g. before any candles are visible.
   bool get isEmpty => high <= low;
 
   /// y of [price] in a pane [height] tall; higher prices sit higher.
   double priceToY(double price, double height) =>
       (high - price) / (high - low) * height;
 
+  /// Inverse of [priceToY]: the price at [y] in a pane [height] tall.
   double yToPrice(double y, double height) =>
       high - y / height * (high - low);
 
@@ -53,11 +58,16 @@ class PriceScale extends ChangeNotifier {
   /// What [range] returned last, so a manual drag starts from what is shown.
   PriceRange _shown = PriceRange.empty;
 
+  // The last fit and what it was computed from: the candle list (compared by
+  // identity, since the bloc replaces it on every update) and the visible
+  // candle indices.
   List<Candle>? _fitCandles;
   (int, int)? _fitVisible;
   PriceRange _fitted = PriceRange.empty;
   double _fittedVolumeMax = 0;
 
+  /// Whether prices follow the visible candles; false after a manual drag or
+  /// scale until [resetAutoScale].
   bool get autoScale => _autoScale;
 
   /// The price range to draw [candles] with, at [timeScale]'s visible range.
@@ -72,6 +82,10 @@ class PriceScale extends ChangeNotifier {
     return _fittedVolumeMax;
   }
 
+  /// Lowest low and highest high of the visible candles, padded by
+  /// [padding], plus their largest volume. Reuses the last fit while the
+  /// candles and the visible range are unchanged, so every painter in a frame
+  /// shares one loop. A flat range gets 1% of the price (at least 1) of room.
   PriceRange _fit(List<Candle> candles, TimeScale timeScale) {
     final visible = timeScale.visibleRange;
     if (identical(candles, _fitCandles) && visible == _fitVisible) return _fitted;
@@ -119,6 +133,7 @@ class PriceScale extends ChangeNotifier {
     _setManual(PriceRange(middle - half, middle + half), 'scale');
   }
 
+  /// Switches off autoscale and shows [range] until [resetAutoScale].
   void _setManual(PriceRange range, String reason) {
     if (_autoScale) ChartLog.info('price', 'autoscale OFF ($reason) from $range');
     ChartLog.frame('price', 'manual $reason -> $range');

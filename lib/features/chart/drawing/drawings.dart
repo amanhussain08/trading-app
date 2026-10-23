@@ -16,6 +16,7 @@ class ChartPoint {
   final DateTime time;
   final double price;
 
+  /// This point moved [dt] later and [dPrice] higher.
   ChartPoint shift(Duration dt, double dPrice) =>
       ChartPoint(time.add(dt), price + dPrice);
 
@@ -31,13 +32,17 @@ class ChartPoint {
       '(${time.toIso8601String()}, ${price.toStringAsFixed(2)})';
 }
 
+/// Something the user drew on the chart. Immutable: editing one replaces it
+/// in the [DrawingController] with a new value.
 sealed class Drawing {
   const Drawing();
 
+  /// The whole drawing moved [dt] later and [dPrice] higher.
   Drawing moveBy(Duration dt, double dPrice);
 }
 
-/// A price level across the whole chart.
+/// A price level across the whole chart. Has no time, so moving it in time
+/// does nothing.
 final class HorizontalLine extends Drawing {
   const HorizontalLine(this.price);
 
@@ -51,7 +56,8 @@ final class HorizontalLine extends Drawing {
   String toString() => 'HorizontalLine(${price.toStringAsFixed(2)})';
 }
 
-/// A segment between two points.
+/// A segment between two points. Each end is a time and a price, so the
+/// line keeps its slope through zooming and stays on its candles.
 final class TrendLine extends Drawing {
   const TrendLine(this.start, this.end);
 
@@ -66,12 +72,21 @@ final class TrendLine extends Drawing {
   String toString() => 'TrendLine($start -> $end)';
 }
 
-enum DrawingTool { horizontalLine, trendLine }
+/// What the next tap or drag on the chart places.
+enum DrawingTool {
+  /// One tap or drag sets the price.
+  horizontalLine,
+
+  /// Two taps, or one drag from start to end.
+  trendLine,
+}
 
 /// The part of a drawing under a finger: the line itself moves the whole
 /// drawing, an end moves just that end.
 enum DrawingPart { body, start, end }
 
+/// A drawing under a finger: its position in [DrawingController.drawings],
+/// and which part of it was touched.
 typedef DrawingHit = ({int index, DrawingPart part});
 
 /// Converts between [ChartPoint]s and candle-pane pixels for one frame of
@@ -92,19 +107,25 @@ class DrawingGeometry {
   final PriceRange range;
   final double pricePaneHeight;
 
+  /// Nothing to convert with yet: positions need at least two candles (to
+  /// know the interval), a laid-out time scale and a price range.
   bool get isEmpty =>
       candles.length < 2 ||
       timeScale.isEmpty ||
       range.isEmpty ||
       pricePaneHeight <= 0;
 
+  /// y of [price] in the price pane.
   double yOf(double price) => range.priceToY(price, pricePaneHeight);
 
+  /// Price at [y] in the price pane.
   double priceAt(double y) => range.yToPrice(y, pricePaneHeight);
 
+  /// Where [p] is on screen, between candles if its time falls between them.
   Offset offsetOf(ChartPoint p) =>
       Offset(timeScale.logicalToX(_logicalOf(p.time)), yOf(p.price));
 
+  /// The time and price under [o]; inverse of [offsetOf].
   ChartPoint pointAt(Offset o) =>
       ChartPoint(_timeOf(timeScale.xToLogical(o.dx)), priceAt(o.dy));
 
@@ -174,6 +195,8 @@ class DrawingGeometry {
 
   int _ms(int index) => candles[index].openTime.millisecondsSinceEpoch;
 
+  /// Shortest distance from [p] to the segment from [a] to [b]: to the
+  /// nearest point on the line, or to an end if [p] lies beyond it.
   static double _distanceToSegment(Offset p, Offset a, Offset b) {
     final ab = b - a;
     final lengthSquared = ab.distanceSquared;
@@ -194,6 +217,8 @@ class DrawingController extends ChangeNotifier {
   Drawing? _draft;
   int? _selected;
 
+  /// Placed drawings, oldest first; later ones paint on top and are hit
+  /// first. Replaced, never mutated, on every change.
   List<Drawing> get drawings => _drawings;
 
   /// The tool the next tap or drag places; null when panning as usual.
@@ -203,6 +228,8 @@ class DrawingController extends ChangeNotifier {
   /// tap, or whatever is under the finger while dragging one out.
   Drawing? get draft => _draft;
 
+  /// Index into [drawings] of the selected drawing, which shows its handles
+  /// and can be dragged or deleted; null when none is.
   int? get selectedIndex => _selected;
 
   /// Picks [tool], or puts it down if it is already picked.
@@ -214,6 +241,7 @@ class DrawingController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Shows [draft] as the drawing being placed, or clears it with null.
   void setDraft(Drawing? draft) {
     if (draft == _draft) return;
     _draft = draft;
@@ -230,11 +258,14 @@ class DrawingController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Swaps the drawing at [index] for [drawing], e.g. while it is dragged;
+  /// the selection stays on it.
   void replace(int index, Drawing drawing) {
     _drawings = List.unmodifiable([..._drawings]..[index] = drawing);
     notifyListeners();
   }
 
+  /// Selects the drawing at [index], or clears the selection with null.
   void select(int? index) {
     if (index == _selected) return;
     _selected = index;
@@ -245,6 +276,7 @@ class DrawingController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Removes the selected drawing, if any; nothing is selected afterwards.
   void deleteSelected() {
     final index = _selected;
     if (index == null) return;
@@ -254,6 +286,7 @@ class DrawingController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Removes every drawing and any draft. The picked tool stays picked.
   void clear() {
     if (_drawings.isEmpty && _draft == null) return;
     _drawings = const [];

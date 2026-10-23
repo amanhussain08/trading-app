@@ -10,6 +10,10 @@ import '../drawing/drawings.dart';
 import '../widgets/candle_chart.dart';
 import '../widgets/drawing_toolbar.dart';
 
+/// One market's chart: the symbol, interval picker and landscape button in
+/// the app bar, the drawing toolbar, and the chart below them. Shows a
+/// spinner while loading and the error message if loading fails. Open it
+/// with [route], which also creates its data source and [ChartBloc].
 class ChartScreen extends StatefulWidget {
   const ChartScreen({super.key});
 
@@ -157,6 +161,8 @@ class _OrientationButtonState extends State<_OrientationButton> {
   }
 }
 
+/// Picks the candle interval. Choosing a new one reloads the same symbol at
+/// that interval; the drawings stay, since they are stored by time and price.
 class _IntervalDropdown extends StatelessWidget {
   const _IntervalDropdown();
 

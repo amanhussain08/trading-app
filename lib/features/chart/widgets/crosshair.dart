@@ -48,6 +48,9 @@ class CrosshairLayer extends StatelessWidget {
   }
 }
 
+/// Paints the crosshair while [point] is set and inside the candle pane:
+/// the two dashed lines, the value tag on the price axis, the time tag on
+/// the time axis, and the legend for the candle under the finger.
 class _CrosshairPainter extends CustomPainter {
   _CrosshairPainter({
     required this.point,
@@ -179,6 +182,8 @@ class _CrosshairPainter extends CustomPainter {
     return price.toStringAsFixed(math.max(ticks.decimals, 2));
   }
 
+  /// The volume at [y] in the volume pane, whose top is [volumeHeadroom]
+  /// times the largest visible volume, in compact form.
   String? _volumeAt(
     double volumeMax,
     double y,
@@ -191,13 +196,19 @@ class _CrosshairPainter extends CustomPainter {
     return formatVolume(math.max(0.0, volume));
   }
 
+  /// The candles' interval, from the two newest; decides whether the time
+  /// tag shows a time or just a date.
   Duration? get _interval => candles.length < 2
       ? null
       : candles.last.openTime.difference(candles[candles.length - 2].openTime);
 
+  /// Time of slot [index], continuing past the newest candle into the empty
+  /// space on the right.
   DateTime? _timeAt(int index) =>
       candles.length < 2 ? null : candleTimeAt(candles, index);
 
+  /// `O 1.00  H 1.20  L 0.90  C 1.10` for [candle] in the top-left corner,
+  /// values coloured by the candle's direction, at the axis's precision.
   void _paintLegend(
     Canvas canvas,
     Candle candle,
@@ -241,6 +252,7 @@ class _CrosshairPainter extends CustomPainter {
     textDirection: TextDirection.ltr,
   )..layout();
 
+  /// A dashed line from [from] to [to]: 4 px dashes with 4 px gaps.
   static void _dashed(Canvas canvas, Offset from, Offset to, Paint paint) {
     final length = (to - from).distance;
     if (length <= 0) return;

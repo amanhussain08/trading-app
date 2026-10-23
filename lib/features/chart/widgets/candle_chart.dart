@@ -17,6 +17,24 @@ import 'pane_painter.dart';
 /// Charts: a [TimeScale] and a [PriceScale] hold the view, input only
 /// changes them, and painters listening to them repaint, each in its own
 /// layer, so moving the crosshair never repaints the candles.
+///
+/// Layout, back to front:
+/// * the candle pane ([CandlePanePainter]): candles over volume bars, with
+///   the price and volume axes on its right and the time axis below;
+/// * the drawings ([DrawingsLayer]): the user's horizontal and trend lines;
+/// * the crosshair ([CrosshairLayer]), shown while a finger is held down.
+///
+/// Gestures, all on the candle pane and touch or stylus only:
+/// * one-finger drag: pans time or prices, whichever way it first moves; a
+///   quick horizontal release flings;
+/// * pinch: zooms time around the fingers;
+/// * double-tap: prices fit the visible candles again;
+/// * long-press: shows the crosshair, which follows the finger until lifted;
+/// * tap and drag with a drawing tool picked: places a line; without one, a
+///   tap selects a line and a drag on the selected line moves it.
+///
+/// Live updates from the bloc only reach the painters: a new forming candle
+/// repaints, and a new candle scrolls in if the view was at the newest one.
 class CandleChart extends StatefulWidget {
   const CandleChart({
     super.key,
@@ -37,7 +55,11 @@ class CandleChart extends StatefulWidget {
   /// Frame around the whole chart, matching the axis lines inside it.
   static const borderColor = Color(0x3D000000);
 
+  /// Width of the price and volume axes on the right, in logical pixels.
+  /// The overlay layers use it to tell the pane from the axis.
   static const priceAxisWidth = 64.0;
+
+  /// Height of the time axis under the panes, in logical pixels.
   static const timeAxisHeight = 24.0;
 
   /// Vertical split between the candles and the volume bars below them.
@@ -61,6 +83,8 @@ class CandleChart extends StatefulWidget {
   State<CandleChart> createState() => _CandleChartState();
 }
 
+/// What a one-finger drag moves, locked by its first movement so a diagonal
+/// drag never pans time and prices at once.
 enum _DragAxis { time, price }
 
 class _CandleChartState extends State<CandleChart>
@@ -76,15 +100,29 @@ class _CandleChartState extends State<CandleChart>
   /// Candles the time scale was last synced with.
   late List<Candle> _candles;
 
+  /// Drives the momentum after a horizontal drag; its value is the distance
+  /// travelled so far, in pixels.
   late final AnimationController _fling;
+
+  /// Fling distance already applied, so each tick pans by the difference.
   double _flingLast = 0;
 
+  /// Height of the candles above the volume bars, from the last layout.
+  /// Turns vertical drags into a fraction of the price range.
   double _pricePaneHeight = 0;
 
   // The gesture in progress.
+  /// Set by the first movement of a one-finger drag; null until then.
   _DragAxis? _axis;
+
+  /// Whether the gesture has become a pinch; it then stays one until lifted.
   bool _zooming = false;
+
+  /// Candles across the chart when the gesture started, so a pinch zooms
+  /// relative to where it began rather than compounding every frame.
   double _gestureStartCount = 0;
+
+  /// How far the gesture has moved in total, for the log.
   Offset _gestureTotal = Offset.zero;
 
   /// Where the last finger went down; a scale gesture only starts once the
@@ -152,6 +190,8 @@ class _CandleChartState extends State<CandleChart>
 
   // --- Drag and pinch (one scale gesture covers both) ------------------------
 
+  /// A new drag or pinch: stops any fling, forgets the last gesture, and with
+  /// one finger checks whether it starts a drawing drag instead of a pan.
   void _onScaleStart(ScaleStartDetails details) {
     if (_fling.isAnimating) ChartLog.info('input', 'fling interrupted');
     _fling.stop();
@@ -170,6 +210,11 @@ class _CandleChartState extends State<CandleChart>
     }
   }
 
+  /// Routes each movement, in order of priority:
+  /// 1. a drawing drag in progress moves the drawing (a second finger
+  ///    cancels it and falls through to zooming);
+  /// 2. two fingers, or any change in finger spread, zoom time;
+  /// 3. otherwise one finger pans time or prices, locked on its first move.
   void _onScaleUpdate(ScaleUpdateDetails details) {
     if (_placing || _moving != null) {
       if (details.pointerCount == 1) {
@@ -212,6 +257,8 @@ class _CandleChartState extends State<CandleChart>
     }
   }
 
+  /// Fingers lifted: finishes a drawing drag, or flings if a time pan was
+  /// released fast enough. Zooms and price drags stop where they are.
   void _onScaleEnd(ScaleEndDetails details) {
     if (_placing || _moving != null) {
       _endDrawingDrag();
@@ -241,6 +288,8 @@ class _CandleChartState extends State<CandleChart>
     );
   }
 
+  /// Pans by however far the fling moved since the last frame, and stops it
+  /// once the pan hits the oldest or newest candle.
   void _onFlingTick() {
     final value = _fling.value;
     final dx = value - _flingLast;
@@ -257,6 +306,8 @@ class _CandleChartState extends State<CandleChart>
 
   // --- Drawings ---------------------------------------------------------------
 
+  /// Converts between finger positions and chart points for the view as it
+  /// is right now; built fresh for each gesture event, since the view moves.
   DrawingGeometry _geometry() => DrawingGeometry(
     candles: _candles,
     timeScale: _time,
@@ -323,6 +374,9 @@ class _CandleChartState extends State<CandleChart>
     ChartLog.info('draw', 'moving ${hit.part.name} of ${_moving!.original}');
   }
 
+  /// Follows the finger: stretches the draft out to it, or moves the
+  /// selected drawing by the finger's travel in time and price since the drag
+  /// started. The finger is kept inside the price pane vertically.
   void _updateDrawingDrag(Offset position) {
     final geometry = _geometry();
     if (geometry.isEmpty) return;
@@ -382,18 +436,25 @@ class _CandleChartState extends State<CandleChart>
 
   // --- Crosshair and auto-scale reset ---------------------------------------
 
+  /// Moves the crosshair to [position]; only the crosshair layer repaints.
   void _showCrosshair(Offset position) => _crosshair.value = position;
 
+  /// Hides the crosshair when the long-press ends or is cancelled.
   void _hideCrosshair() {
     if (_crosshair.value != null) ChartLog.info('input', 'crosshair hidden');
     _crosshair.value = null;
   }
 
+  /// Double-tap: prices fit the visible candles again after a manual drag or
+  /// scale. Off while a drawing tool is picked; see [_pane].
   void _resetAutoScale() {
     ChartLog.info('input', 'double-tap: autoscale');
     _price.resetAutoScale();
   }
 
+  /// Rebuilds only when the bloc's candle list changes: a new list goes to
+  /// the painters, and the listener keeps the time scale in step with it.
+  /// Pan, zoom, the crosshair and drawings never rebuild it.
   @override
   Widget build(BuildContext context) {
     final candles = context.select((ChartBloc bloc) => bloc.state.candles);
@@ -440,7 +501,8 @@ class _CandleChartState extends State<CandleChart>
     );
   }
 
-  /// The candle pane with all its input handling.
+  /// The candle pane with all its input handling. Its layout gives the time
+  /// scale its width and records the price pane's height for vertical drags.
   Widget _pane(BuildContext context, List<Candle> candles) {
     final dpr = MediaQuery.devicePixelRatioOf(context);
     return LayoutBuilder(
@@ -480,6 +542,8 @@ class _CandleChartState extends State<CandleChart>
     );
   }
 
+  /// The candles and volume bars, in their own layer so the overlays above
+  /// repaint without them.
   Widget _panePaint(List<Candle> candles, double dpr) => RepaintBoundary(
     child: CustomPaint(
       key: CandleChart.paneKey,

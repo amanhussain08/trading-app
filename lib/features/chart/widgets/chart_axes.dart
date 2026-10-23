@@ -16,10 +16,15 @@ const _tickLength = 4.0;
 // Price axis (y)
 // ---------------------------------------------------------------------------
 
+/// Price levels to label on an axis, and how many decimals to print them
+/// with so every label has the same precision.
 class PriceTicks {
   const PriceTicks({required this.values, required this.decimals});
 
+  /// Levels from low to high, all multiples of the same round step.
   final List<double> values;
+
+  /// Decimals the step needs: 0 for a step of 5, 2 for 0.05.
   final int decimals;
 }
 
@@ -91,6 +96,9 @@ class PriceAxis extends StatelessWidget {
 double pinnedLabelTop({required double y, required double labelHeight, required double height}) =>
     (y - labelHeight / 2).clamp(0.0, math.max(0.0, height - labelHeight));
 
+/// Draws the price axis: the axis line, a tick and label for each round
+/// price level, and the newest close in a green or red tag. Labels that
+/// would overlap the tag, or fall off the axis, are skipped.
 class _PriceAxisPainter extends CustomPainter {
   _PriceAxisPainter(this.candles, this.timeScale, this.priceScale)
       : super(repaint: Listenable.merge([timeScale, priceScale]));
@@ -214,6 +222,9 @@ class VolumeAxis extends StatelessWidget {
   }
 }
 
+/// Draws round volume levels from 0 up to the volume pane's top
+/// ([volumeHeadroom] above the largest visible volume), in compact form.
+/// Repaints on pan and zoom, since they change which volumes are visible.
 class _VolumeAxisPainter extends CustomPainter {
   _VolumeAxisPainter(this.candles, this.timeScale, this.priceScale)
       : super(repaint: timeScale);
@@ -261,6 +272,8 @@ class _VolumeAxisPainter extends CustomPainter {
 // Time axis (x)
 // ---------------------------------------------------------------------------
 
+/// Label spacings the time axis can use, smallest first; [timeStepMinutes]
+/// picks the first that leaves room between labels.
 const _timeStepsMinutes = [
   1, 5, 15, 30, 60, 120, 240, 360, 720, // up to 12h
   1440, 2880, 10080, 20160, 43200, 129600, 525600, // 1d .. 1y
@@ -283,6 +296,8 @@ int timeStepMinutes({
   return _timeStepsMinutes.last;
 }
 
+/// Minutes since the epoch in local time, so labels fall on local hours and
+/// midnights rather than UTC ones.
 int _localEpochMinutes(DateTime time) =>
     (time.millisecondsSinceEpoch + time.toLocal().timeZoneOffset.inMilliseconds) ~/ 60000;
 

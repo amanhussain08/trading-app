@@ -39,8 +39,14 @@ class TimeScale extends ChangeNotifier {
   double _rightOffset = 0;
   int _count = 0;
 
+  /// Width of the candle pane, in logical pixels; set by layout.
   double get width => _width;
+
+  /// Width of one candle slot, in logical pixels: bigger is zoomed in.
   double get barSpacing => _barSpacing;
+
+  /// Slots between the newest candle and the right edge: positive is empty
+  /// space past it, negative is scrolled back into history.
   double get rightOffset => _rightOffset;
 
   /// Number of candles the scale lays out.
@@ -49,6 +55,7 @@ class TimeScale extends ChangeNotifier {
   /// Candles that fit across the width at the current zoom (fractional).
   double get visibleCount => _barSpacing > 0 ? _width / _barSpacing : 0;
 
+  /// True until there is both a width and candles; nothing can be drawn yet.
   bool get isEmpty => _width <= 0 || _barSpacing <= 0 || _count == 0;
 
   int get _newestIndex => _count - 1;

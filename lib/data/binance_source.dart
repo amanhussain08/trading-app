@@ -6,6 +6,9 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'market_data_source.dart';
 import 'models/candle.dart';
 
+/// Binance's public market data, which needs no account or API key: history
+/// from the REST endpoint `/api/v3/klines`, live candles from the
+/// `<symbol>@kline_<interval>` WebSocket stream.
 class BinanceSource implements MarketDataSource {
   BinanceSource({Dio? dio})
     : _dio =
@@ -44,6 +47,10 @@ class BinanceSource implements MarketDataSource {
     }
   }
 
+  /// Opens the kline stream and yields each update to the current candle.
+  /// Messages that aren't kline events are skipped. The socket closes when
+  /// the listener cancels, or when the server ends the stream; there is no
+  /// reconnect.
   @override
   Stream<Candle> live(String symbol, String interval) async* {
     final channel = WebSocketChannel.connect(
@@ -63,6 +70,8 @@ class BinanceSource implements MarketDataSource {
     }
   }
 
+  /// A message for the chart's error screen: Binance's own error text when
+  /// it sent one (e.g. an unknown symbol), otherwise the kind of failure.
   static String _describe(DioException e) {
     final data = e.response?.data;
     if (data is Map && data['msg'] != null) {

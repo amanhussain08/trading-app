@@ -22,6 +22,11 @@ class ChartBloc extends Bloc<ChartEvent, ChartState> {
 
   final MarketDataSource _source;
 
+  /// Loads a market, in three steps:
+  /// 1. emits [ChartStatus.loading] for the new symbol and interval;
+  /// 2. fetches the last [historyLimit] candles, emitting
+  ///    [ChartStatus.ready] with them, or [ChartStatus.failure] and stopping;
+  /// 3. listens to the live stream, merging each update into the candles.
   Future<void> _onStarted(ChartStarted event, Emitter<ChartState> emit) async {
     ChartLog.info('bloc', 'loading ${event.symbol} ${event.interval}');
     emit(

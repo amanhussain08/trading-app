@@ -1,5 +1,7 @@
 import 'package:equatable/equatable.dart';
 
+/// One candlestick: the open, high, low and close prices over one interval
+/// starting at [openTime], and the volume traded in it.
 class Candle extends Equatable {
   const Candle({
     required this.openTime,
@@ -32,13 +34,20 @@ class Candle extends Equatable {
         volume: double.parse(k['v'] as String),
       );
 
+  /// Start of the candle's interval, in UTC. Identifies the candle: a live
+  /// update with the same open time replaces it rather than adding one.
   final DateTime openTime;
   final double open;
   final double high;
   final double low;
+
+  /// The latest price while the candle is still forming.
   final double close;
+
+  /// Amount of the base asset traded (e.g. BTC for BTCUSDT).
   final double volume;
 
+  /// Whether the candle closed at or above its open: drawn green, else red.
   bool get isUp => close >= open;
 
   @override

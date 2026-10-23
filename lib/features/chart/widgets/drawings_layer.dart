@@ -44,6 +44,9 @@ class DrawingsLayer extends StatelessWidget {
   }
 }
 
+/// Paints every drawing, then the draft on top, then the price tags. Lines
+/// are clipped to the price pane so they never run over the volume bars or
+/// the axes; the selected drawing and the draft are thicker, with handles.
 class _DrawingsPainter extends CustomPainter {
   _DrawingsPainter({
     required this.controller,
@@ -128,6 +131,7 @@ class _DrawingsPainter extends CustomPainter {
     }
   }
 
+  /// A white dot with a blue ring, showing where a line can be grabbed.
   void _paintHandle(Canvas canvas, Offset at) {
     canvas.drawCircle(at, _handleRadius, Paint()..color = Colors.white);
     canvas.drawCircle(

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../chart/view/chart_screen.dart';
 
+/// Start screen: the app's name and a button that opens the BTC/USDT chart
+/// on the 1-hour interval.
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 

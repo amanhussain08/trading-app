@@ -6,6 +6,7 @@ void main() {
   runApp(const TradingApp());
 }
 
+/// The app: a light theme, opening on [HomeScreen].
 class TradingApp extends StatelessWidget {
   const TradingApp({super.key});
 
